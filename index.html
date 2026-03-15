@@ -1,0 +1,493 @@
+﻿<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Icarus Vocab - Portable Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    <style id="theme-styles">
+        :root { 
+            --bg: #f1f5f9; --panel: #ffffff; --text: #1e293b; --primary: #991b1b; 
+            --card-bg: #ffffff; --border: #e2e8f0; --accent: #fef08a;
+            --base-font-size: 1rem;
+            --context-font-size: 1.25rem;
+        }
+        body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; height: 100vh; display: flex; flex-direction: column; margin: 0; transition: all 0.3s; overflow: hidden; }
+        .serif { font-family: 'Crimson Pro', serif; }
+        .sidebar { width: 360px; background: var(--panel); border-right: 1px solid var(--border); backdrop-filter: blur(10px); display: flex; flex-direction: column; }
+        
+        .vocab-card { 
+            background: var(--card-bg); border-radius: 12px; border-top: 6px solid var(--primary); 
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); padding: 1.5rem; display: flex; flex-direction: column; height: 100%; transition: all 0.2s;
+            border: 1px solid var(--border); border-top: 6px solid var(--primary);
+            cursor: pointer; position: relative; min-height: 250px;
+        }
+        .vocab-card.selected { border: 2px solid var(--primary); transform: translateY(-4px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2); }
+        .card-number { position: absolute; top: 10px; right: 15px; font-size: 10px; font-weight: bold; opacity: 0.2; }
+        .main-view { flex: 1; overflow-y: auto; padding: 2rem 3rem; scroll-behavior: smooth; }
+        
+        .switch { position: relative; display: inline-block; width: 34px; height: 18px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 20px; }
+        .slider:before { position: absolute; content: ""; height: 12px; width: 12px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: var(--primary); }
+        input:checked + .slider:before { transform: translateX(16px); }
+
+        .chunk-dot { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-size: 10px; border-radius: 6px; background: rgba(0,0,0,0.05); cursor: pointer; font-weight: bold; transition: 0.2s; }
+        .chunk-dot.loaded { background: var(--primary); color: white; }
+        .chunk-dot.loading { background: #fbbf24; color: white; animation: pulse 1.5s infinite; }
+        
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+        .trans-mini-card { transition: all 0.2s; border-left-width: 5px; background: white; margin-bottom: 1rem; border-color: transparent; }
+        .trans-mini-card.active { background-color: rgba(153, 27, 27, 0.05); border-left-color: var(--primary); }
+        .trans-text-large { font-size: 1.15rem; line-height: 1.5; }
+
+        .tab-btn.active { border-bottom: 2px solid var(--primary); color: var(--primary); }
+        .highlight-word { color: var(--primary); font-weight: 700; text-decoration: underline; text-underline-offset: 4px; }
+        
+        /* Cố định Textarea và Layout Sidebar */
+        #rawText { height: 85px !important; resize: none !important; flex-shrink: 0; }
+        .sidebar-content { flex: 1; display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden; }
+    </style>
+</head>
+<body id="app-body">
+
+<header class="h-16 flex items-center justify-between px-8 z-10 shrink-0 shadow-sm bg-white border-b">
+    <div class="flex items-center gap-3">
+        <div class="bg-red-800 text-white p-2 rounded-lg shadow-md"><i class="fas fa-feather-alt"></i></div>
+        <h1 class="font-bold text-lg serif tracking-tight uppercase">Icarus Portable</h1>
+    </div>
+    <div class="flex items-center gap-6">
+        <button onclick="togglePauseSpeech()" id="pauseBtn" class="w-10 h-10 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded-full transition-all text-slate-700">
+            <i class="fas fa-pause"></i>
+        </button>
+        <div id="session-timer" class="font-mono bg-red-800/10 px-3 py-1 rounded-full text-red-800 font-bold text-xs border border-red-800/20">00:00</div>
+        
+        <div class="flex gap-2">
+            <button id="copyBtn" onclick="copyToClipboard()" class="bg-indigo-700 hover:bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-md flex items-center gap-1">
+                <i class="fas fa-copy"></i> COPY
+            </button>
+            <button onclick="exportToTXT()" class="bg-slate-700 hover:bg-slate-600 text-white px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-md">TXT</button>
+            <button onclick="exportToHTML()" class="bg-red-800 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-lg">LƯU TRANG (.HTML)</button>
+        </div>
+    </div>
+</header>
+
+<div class="flex flex-1 overflow-hidden">
+    <aside class="sidebar z-20 shadow-xl">
+        <div class="flex border-b shrink-0">
+            <button onclick="switchTab('main-tab')" id="btn-main-tab" class="tab-btn active flex-1 py-3 text-[10px] font-bold uppercase tracking-widest">Nhập liệu</button>
+            <button onclick="switchTab('trans-tab')" id="btn-trans-tab" class="tab-btn flex-1 py-3 text-[10px] font-bold uppercase tracking-widest">Bản dịch</button>
+            <button onclick="switchTab('history-tab')" id="btn-history-tab" class="tab-btn flex-1 py-3 text-[10px] font-bold uppercase tracking-widest">Lịch sử</button>
+        </div>
+
+        <div id="main-tab" class="sidebar-content p-5">
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-[9px] font-bold uppercase opacity-50 mb-1">OpenAI Key</label>
+                    <input type="password" id="apiKey" oninput="localStorage.setItem('icarus_gpt_key', this.value)" placeholder="sk-..." class="w-full border rounded-lg px-3 py-2 text-xs outline-none">
+                </div>
+
+                <div class="space-y-3 bg-black/5 p-4 rounded-xl border">
+                    <div class="flex items-center justify-between">
+                        <span class="text-[10px] font-bold opacity-70 uppercase">Tự động đọc tiếp</span>
+                        <label class="switch"><input type="checkbox" id="autoNextToggle"><span class="slider"></span></label>
+                    </div>
+                    <div class="flex items-center justify-between pt-2 border-t">
+                        <span class="text-[10px] font-bold opacity-70 uppercase">Giải nghĩa Tiếng Anh</span>
+                        <label class="switch"><input type="checkbox" id="showEnDefToggle" checked onchange="recalculateAndRender()"><span class="slider"></span></label>
+                    </div>
+                    <div class="pt-2 border-t flex flex-col gap-1">
+                        <span class="text-[10px] font-bold opacity-70 uppercase">Nguồn Ngữ Cảnh</span>
+                        <select id="contextSource" class="text-[11px] bg-white border p-1 rounded font-bold">
+                            <option value="original">Từ văn bản gốc</option>
+                            <option value="api">Do API tự cấp</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[9px] font-bold uppercase opacity-50 mb-1">Mật độ từ vựng</label>
+                    <select id="ratioSetting" class="w-full text-[11px] font-bold p-2 border rounded-lg bg-white outline-none">
+                        <option value="100">12 từ / 100 từ</option>
+                        <option value="200" selected>12 từ / 200 từ</option>
+                        <option value="300">12 từ / 300 từ</option>
+                        <option value="500">12 từ / 500 từ</option>
+                    </select>
+                </div>
+
+                <div class="flex flex-col gap-2">
+                    <textarea id="rawText" class="w-full border rounded-xl p-3 text-xs outline-none shadow-inner" placeholder="Dán văn bản..."></textarea>
+                    <div id="chunkIndices" class="flex flex-wrap gap-2 pt-1"></div>
+                </div>
+            </div>
+            
+            <div class="flex gap-2 mt-6 pb-2 shrink-0">
+                <button onclick="startNewSession()" class="flex-1 bg-slate-800 text-white py-3 rounded-xl font-bold uppercase text-[9px] hover:bg-black transition-colors shadow-md">Phân tích</button>
+                <button id="extractAllBtn" onclick="toggleExtractAll()" class="flex-1 bg-red-800 text-white py-3 rounded-xl font-bold uppercase text-[9px] hover:bg-red-900 transition-colors shadow-md">Extract All</button>
+            </div>
+        </div>
+
+        <div id="trans-tab" class="hidden p-4 flex flex-col gap-4 overflow-y-auto flex-1 bg-slate-50">
+            <div id="translationList" class="space-y-4 pb-40"></div>
+        </div>
+
+        <div id="history-tab" class="hidden p-5 flex flex-col gap-4 overflow-y-auto flex-1 bg-white">
+            <div class="flex justify-between items-center mb-2">
+                <span class="text-[10px] font-bold uppercase opacity-50 tracking-widest">Lịch sử</span>
+                <button onclick="clearAllHistory()" class="text-[9px] font-bold text-red-700 uppercase hover:underline">Xóa tất cả</button>
+            </div>
+            <div id="historyList" class="flex flex-col gap-3"></div>
+        </div>
+    </aside>
+
+    <main class="main-view" id="mainScroll">
+        <div id="workspace" class="max-w-6xl mx-auto space-y-16 pb-60"></div>
+    </main>
+</div>
+
+<footer class="h-10 bg-white border-t flex items-center justify-center text-[10px] font-bold text-slate-400 gap-4 shrink-0">
+    <span>Icarus - kienspvl@gmail.com - 097.463.87.94</span>
+</footer>
+
+<script id="bootstrap-data">window.ICARUS_EXPORTED_DATA = null;</script>
+
+<script>
+    let wordsArray = [];
+    let chunks = [];
+    let allVocabs = []; 
+    let currentSelectedId = null;
+    let isExtractingAll = false;
+    let startTime = Date.now();
+    const synth = window.speechSynthesis;
+
+    window.onload = async () => {
+        if (window.ICARUS_EXPORTED_DATA) {
+            await resumeFromData(window.ICARUS_EXPORTED_DATA);
+        } else {
+            if(localStorage.getItem('icarus_gpt_key')) document.getElementById('apiKey').value = localStorage.getItem('icarus_gpt_key');
+            renderHistory();
+            resumeSession(); 
+        }
+    };
+
+    function saveSessionState() {
+        return {
+            rawText: document.getElementById('rawText').value,
+            chunks: chunks,
+            currentSelectedId: currentSelectedId,
+            ratioSetting: document.getElementById('ratioSetting').value, 
+            contextSource: document.getElementById('contextSource').value,
+            wordsArray: wordsArray,
+            allVocabs: allVocabs
+        };
+    }
+
+    async function resumeSession() {
+        const saved = localStorage.getItem('icarus_last_session');
+        if (!saved) return;
+        await resumeFromData(JSON.parse(saved));
+    }
+
+    async function resumeFromData(state) {
+        document.getElementById('rawText').value = state.rawText || "";
+        document.getElementById('contextSource').value = state.contextSource || "original";
+        document.getElementById('ratioSetting').value = state.ratioSetting || "200";
+        wordsArray = state.wordsArray || [];
+        chunks = state.chunks || [];
+        allVocabs = state.allVocabs || [];
+        currentSelectedId = state.currentSelectedId;
+        if (chunks.length > 0) {
+            renderStructureOnly();
+            await recalculateAndRender();
+            if (currentSelectedId !== null) selectCard(currentSelectedId, false);
+        }
+    }
+
+    function renderStructureOnly() {
+        document.getElementById('workspace').innerHTML = '';
+        document.getElementById('chunkIndices').innerHTML = '';
+        chunks.forEach((chunk, idx) => {
+            const dot = document.createElement('div');
+            dot.id = `dot-${idx}`; 
+            dot.className = `chunk-dot ${chunk.status === 'done' ? 'loaded' : ''}`; 
+            dot.innerText = idx + 1;
+            dot.onclick = () => jumpToChunk(idx, true);
+            document.getElementById('chunkIndices').appendChild(dot);
+            const section = document.createElement('div');
+            section.id = `chunk-section-${idx}`;
+            section.innerHTML = `
+                <div class="mb-8 flex items-center gap-4">
+                    <span class="bg-black text-white px-3 py-1 rounded text-[10px] font-bold">SET #${idx+1}</span>
+                    <div class="h-[1px] flex-1 bg-black/10"></div>
+                </div>
+                <div id="grid-${idx}" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    ${chunk.status === 'pending' ? `
+                        <div class="col-span-full py-10 border-2 border-dashed border-black/5 rounded-2xl flex flex-col items-center opacity-30 cursor-pointer" onclick="loadChunk(${idx})">
+                             <i class="fas fa-lock mb-2"></i><span class="text-xs font-bold uppercase tracking-widest">Click to load Chunk</span>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+            document.getElementById('workspace').appendChild(section);
+        });
+    }
+
+    setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        const m = Math.floor(elapsed / 60).toString().padStart(2, '0');
+        const s = (elapsed % 60).toString().padStart(2, '0');
+        const timerEl = document.getElementById('session-timer');
+        if(timerEl) timerEl.innerText = `${m}:${s}`;
+    }, 1000);
+
+    async function translateText(text) {
+        try {
+            const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=vi&dt=t&q=${encodeURIComponent(text)}`);
+            const data = await res.json();
+            return data[0].map(x => x[0]).join('');
+        } catch { return "Lỗi dịch"; }
+    }
+
+    function renderHistory() {
+        const history = JSON.parse(localStorage.getItem('icarus_history') || '[]');
+        const list = document.getElementById('historyList');
+        if(!list) return;
+        list.innerHTML = history.length ? history.map(item => `
+            <div class="bg-slate-50 border p-3 rounded-xl group relative hover:border-red-200 transition-all">
+                <div class="text-[9px] opacity-40 font-bold mb-1">${item.date}</div>
+                <div class="text-[11px] font-medium pr-8 cursor-pointer line-clamp-2" onclick="loadHistoryItem('${item.id}')">${item.text}</div>
+                <button onclick="deleteHistoryItem('${item.id}')" class="absolute right-3 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-100 text-slate-900 p-2 transition-all font-bold">
+                    ✕
+                </button>
+            </div>
+        `).join('') : '<div class="text-[11px] opacity-30 italic text-center py-10">Trống.</div>';
+    }
+
+    function addToHistory(fullText) {
+        let history = JSON.parse(localStorage.getItem('icarus_history') || '[]');
+        history.unshift({ id: Date.now().toString(), date: new Date().toLocaleString('vi-VN'), text: fullText.substring(0, 100) + '...', fullText: fullText });
+        if (history.length > 20) history.pop();
+        localStorage.setItem('icarus_history', JSON.stringify(history));
+        renderHistory();
+    }
+
+    function deleteHistoryItem(id) {
+        let history = JSON.parse(localStorage.getItem('icarus_history') || '[]');
+        localStorage.setItem('icarus_history', JSON.stringify(history.filter(item => item.id !== id)));
+        renderHistory();
+    }
+
+    function clearAllHistory() {
+        if(confirm("Xóa toàn bộ lịch sử?")) { 
+            localStorage.setItem('icarus_history', '[]'); 
+            localStorage.removeItem('icarus_last_session');
+            location.reload();
+        }
+    }
+
+    function loadHistoryItem(id) {
+        const history = JSON.parse(localStorage.getItem('icarus_history') || '[]');
+        const item = history.find(i => i.id == id);
+        if(item) { document.getElementById('rawText').value = item.fullText; startNewSession(); }
+    }
+
+    function startNewSession() {
+        const text = document.getElementById('rawText').value.trim();
+        const ratio = parseInt(document.getElementById('ratioSetting').value);
+        if (!text || !document.getElementById('apiKey').value) return alert("Thiếu dữ liệu!");
+        addToHistory(text);
+        wordsArray = text.split(/\s+/);
+        chunks = []; allVocabs = []; currentSelectedId = null;
+        document.getElementById('workspace').innerHTML = '';
+        document.getElementById('chunkIndices').innerHTML = '';
+        for (let i = 0; i < wordsArray.length; i += ratio) {
+            const chunkId = chunks.length;
+            chunks.push({ start: i, end: Math.min(i + ratio, wordsArray.length), status: 'pending', data: [] });
+            const dot = document.createElement('div');
+            dot.id = `dot-${chunkId}`; dot.className = 'chunk-dot'; dot.innerText = chunkId + 1;
+            dot.onclick = () => jumpToChunk(chunkId, true);
+            document.getElementById('chunkIndices').appendChild(dot);
+        }
+        renderStructureOnly(); 
+        localStorage.setItem('icarus_last_session', JSON.stringify(saveSessionState()));
+        loadSmartChunks(0);
+    }
+
+    function highlightWordInText(text, word) {
+        if (!text || !word) return text;
+        const regex = new RegExp(`(\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b)`, 'gi');
+        return text.replace(regex, '<span class="highlight-word">$1</span>');
+    }
+
+    async function loadChunk(idx) {
+        if (idx < 0 || idx >= chunks.length || chunks[idx].status !== 'pending') return;
+        chunks[idx].status = 'loading';
+        const dot = document.getElementById(`dot-${idx}`);
+        if(dot) dot.className = 'chunk-dot loading';
+        const textPart = wordsArray.slice(chunks[idx].start, chunks[idx].end).join(' ');
+        const prompt = `Extract 12 advanced words. Return ONLY JSON array: [{"word": "...", "ipa": "...", "type": "...", "definition": "simple English definition", "example": "..."}]. ${document.getElementById('contextSource').value === 'original' ? "Use EXACT sentence from text." : "Create new example."}`;
+        try {
+            const res = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${document.getElementById('apiKey').value}` },
+                body: JSON.stringify({ model: "gpt-3.5-turbo", messages: [{ role: "system", content: prompt }, { role: "user", content: textPart }], temperature: 0.3 })
+            }).then(r => r.json());
+            chunks[idx].data = JSON.parse(res.choices[0].message.content);
+            chunks[idx].status = 'done';
+            if(dot) dot.className = 'chunk-dot loaded';
+            await recalculateAndRender();
+            localStorage.setItem('icarus_last_session', JSON.stringify(saveSessionState()));
+        } catch (e) {
+            chunks[idx].status = 'pending';
+            if(dot) dot.className = 'chunk-dot';
+        }
+    }
+
+    async function recalculateAndRender() {
+        allVocabs = [];
+        let globalCounter = 0;
+        const showEnDef = document.getElementById('showEnDefToggle').checked;
+        for (let i = 0; i < chunks.length; i++) {
+            const grid = document.getElementById('grid-' + i);
+            if (chunks[i].status === 'done' && chunks[i].data.length > 0) {
+                grid.innerHTML = '';
+                for (let j = 0; j < chunks[i].data.length; j++) {
+                    const item = chunks[i].data[j];
+                    if (!item.vn) { 
+                        item.vn = await translateText(item.word); 
+                        item.exVn = await translateText(item.example);
+                    }
+                    const vocabObj = { ...item, id: globalCounter, chunkId: i };
+                    allVocabs.push(vocabObj);
+                    const card = document.createElement('div');
+                    card.className = "vocab-card"; card.id = `card-${globalCounter}`;
+                    card.onclick = () => selectCard(vocabObj.id, true);
+                    card.innerHTML = `
+                        <span class="card-number">#${globalCounter + 1}</span>
+                        <div class="serif text-3xl font-bold mb-1">${item.word}</div>
+                        <div class="text-red-800 font-mono text-[14px] font-bold mb-3">${item.ipa} <span class="opacity-50 text-[12px]">(${item.type})</span></div>
+                        <div class="mb-2 text-xl font-bold text-slate-800">${item.vn}</div>
+                        ${showEnDef ? `<div class="mb-4 text-sm font-medium text-slate-500 italic border-l-2 border-red-200 pl-3 leading-relaxed">${item.definition || ''}</div>` : ''}
+                        <div class="mt-auto pt-4 border-t italic opacity-80 serif text-[1.25rem] font-semibold">"${highlightWordInText(item.example, item.word)}"</div>
+                    `;
+                    grid.appendChild(card);
+                    globalCounter++;
+                }
+            }
+        }
+        if (currentSelectedId !== null && document.getElementById(`card-${currentSelectedId}`)) document.getElementById(`card-${currentSelectedId}`).classList.add('selected');
+        updateTranslationTab(currentSelectedId || 0);
+    }
+
+    function updateTranslationTab(currentId, shouldScrollSide = false) {
+        const list = document.getElementById('translationList');
+        if(!allVocabs.length) return list.innerHTML = '<div class="text-center opacity-30 py-20">Chọn từ để xem...</div>';
+        const showEnDef = document.getElementById('showEnDefToggle').checked;
+        list.innerHTML = allVocabs.map((item, i) => `
+            <div id="trans-mini-${i}" onclick="selectCard(${i})" class="trans-mini-card p-5 rounded-xl border shadow-sm ${i === currentId ? 'active' : ''}">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-lg font-bold serif uppercase">${item.word}</span>
+                    <span class="text-xs font-bold opacity-30">#${i + 1}</span>
+                </div>
+                <div class="mb-3">
+                    <div class="text-[14px] font-bold text-red-800 font-mono mb-1">${item.ipa}</div>
+                    <div class="text-[1.2rem] font-bold text-slate-800">${item.vn}</div>
+                    ${showEnDef ? `<div class="text-xs text-slate-500 italic mt-1 leading-snug">${item.definition || ''}</div>` : ''}
+                </div>
+                <div class="pt-3 border-t border-slate-100">
+                    <div class="trans-text-large text-slate-500 serif italic mb-2">"${highlightWordInText(item.example, item.word)}"</div>
+                    <div class="trans-text-large font-bold text-red-900">${item.exVn || '...'}</div>
+                </div>
+            </div>
+        `).join('');
+        if (shouldScrollSide && document.getElementById(`trans-mini-${currentId}`)) document.getElementById(`trans-mini-${currentId}`).scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    async function loadSmartChunks(idx) {
+        for (const t of [idx, idx + 1, idx + 2]) { if (t < chunks.length && chunks[t].status === 'pending') await loadChunk(t); }
+    }
+
+    function selectCard(id, shouldSpeak = false) {
+        if (id < 0 || id >= allVocabs.length) return;
+        if (currentSelectedId !== null && document.getElementById(`card-${currentSelectedId}`)) document.getElementById(`card-${currentSelectedId}`).classList.remove('selected');
+        currentSelectedId = id;
+        localStorage.setItem('icarus_last_session', JSON.stringify(saveSessionState()));
+        const el = document.getElementById(`card-${id}`);
+        if (el) {
+            el.classList.add('selected');
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            updateTranslationTab(id, true);
+            loadSmartChunks(allVocabs[id].chunkId);
+            if (shouldSpeak) speakCard(id);
+        }
+    }
+
+    function speakCard(id) {
+        synth.cancel();
+        const item = allVocabs[id];
+        if (!item) return;
+        const utWord = new SpeechSynthesisUtterance(item.word);
+        utWord.onend = () => {
+            const utEx = new SpeechSynthesisUtterance(item.example);
+            utEx.onend = () => { if (document.getElementById('autoNextToggle').checked) setTimeout(() => selectCard(currentSelectedId + 1, true), 1200); };
+            synth.speak(utEx);
+        };
+        synth.speak(utWord);
+    }
+
+    async function toggleExtractAll() {
+        if (isExtractingAll) { isExtractingAll = false; return; }
+        isExtractingAll = true; document.getElementById('extractAllBtn').innerText = "PAUSE";
+        for (let i = 0; i < chunks.length; i++) { if (!isExtractingAll) break; if (chunks[i].status === 'pending') await loadChunk(i); }
+        isExtractingAll = false; document.getElementById('extractAllBtn').innerText = "Extract All";
+    }
+
+    function jumpToChunk(idx, scroll = true) {
+        if (scroll && document.getElementById(`chunk-section-${idx}`)) document.getElementById(`chunk-section-${idx}`).scrollIntoView({ behavior: 'smooth' });
+        loadSmartChunks(idx);
+    }
+
+    function switchTab(t) {
+        ['main-tab', 'trans-tab', 'history-tab'].forEach(id => document.getElementById(id).classList.add('hidden'));
+        ['btn-main-tab', 'btn-trans-tab', 'btn-history-tab'].forEach(id => document.getElementById(id).classList.remove('active'));
+        document.getElementById(t).classList.remove('hidden');
+        document.getElementById('btn-' + t).classList.add('active');
+    }
+
+    function copyToClipboard() {
+        if (allVocabs.length === 0) return alert("Không có dữ liệu!");
+        let content = "Word\tIPA\tType\tVietnamese\tEnglish Definition\tContext\tContext_VN\n";
+        content += allVocabs.map(v => `${v.word}\t${v.ipa}\t${v.type}\t${v.vn}\t${v.definition || ''}\t${v.example}\t${v.exVn || ''}`).join('\n');
+        navigator.clipboard.writeText(content).then(() => {
+            const btn = document.getElementById('copyBtn');
+            btn.innerHTML = '<i class="fas fa-check"></i> COPIED!';
+            setTimeout(() => btn.innerHTML = '<i class="fas fa-copy"></i> COPY', 2000);
+        });
+    }
+
+    function exportToTXT() {
+        if (allVocabs.length === 0) return alert("Không có dữ liệu!");
+        let content = "Word\tIPA\tType\tVietnamese\tEnglish Definition\tContext\tContext_VN\n";
+        content += allVocabs.map(v => `${v.word}\t${v.ipa}\t${v.type}\t${v.vn}\t${v.definition || ''}\t${v.example}\t${v.exVn || ''}`).join('\n');
+        const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content], { type: 'text/plain' })); a.download = `Icarus_Vocabs.txt`; a.click();
+    }
+
+    function exportToHTML() {
+        const dataString = JSON.stringify(saveSessionState()).replace(/<\/script>/g, '<\\/script>');
+        const newDoc = document.documentElement.outerHTML.replace(/<script id="bootstrap-data">[\s\S]*?<\/script>/, `<script id="bootstrap-data">window.ICARUS_EXPORTED_DATA = ${dataString};<\/script>`);
+        const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([newDoc], { type: 'text/html' })); a.download = `Icarus_Session_${new Date().toISOString().slice(0,10)}.html`; a.click();
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (['TEXTAREA', 'INPUT'].includes(e.target.tagName)) return;
+        if (e.key === 'ArrowRight') selectCard((currentSelectedId === null) ? 0 : currentSelectedId + 1, true);
+        if (e.key === 'ArrowLeft' && currentSelectedId > 0) selectCard(currentSelectedId - 1, true);
+        if (e.code === 'Space') { e.preventDefault(); if(currentSelectedId !== null) speakCard(currentSelectedId); }
+    });
+</script>
+</body>
+</html>
